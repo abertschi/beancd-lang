@@ -1,0 +1,400 @@
+#+TITLE: The beancd programming language
+
+-beancd- (pronounced beancode) is a simple yet complete compiler for
+the -beancd language-, a java-like object-oriented programming
+language with an IA-32 asm backend.
+
+This is a learning project to gain practical experience in designing
+and implementing a compiler (5k loc). I built it for the course Compiler Design
+taught at ETH Zurich. Beancd covers the main steps in a compiler
+pipeline including;
+
+- Lexical analysis
+- Syntax analysis
+- AST intermediate representation
+- Semantical analysis
+- AST optimizations, simple CFG and Data-Flow analysis
+- IA-32 assembly backend
+
+* Language Features
+Some of beancds main language feature include;
+
+- Object oriented
+- Single inheritance
+- Statically typed
+- static scoping: global, class, method scope
+- no constructors, no abstract classes
+- supports primitive datatypes boolean, and int
+- Arrays are not co-variant, super of all Arrays is Object
+- built-in methods for read(), write(expr) and writeln()
+- runtime errors for: downcast, array store, out-of-bound, null
+  pointer
+
+* tldr; Hello World aka print 1337
+input: beancd
+#+BEGIN_SRC java
+class Main {
+    void main() {
+        write(1337);
+    }
+}
+#+END_SRC
+
+output: ia-32
+#+BEGIN_SRC asm
+# === WRITELN CONFIG SECTION
+.section .data
+STR_NL:
+  .string "\n"
+STR_D:
+  .string "%d"
+
+# === VTABLE SECTION
+.section .data
+___vtable_boolean:
+  .long 0xB00B5BAE                               #     0: ___super_vptr
+
+___vtable_Object:
+  .long 0xB00B5BAE                               #     0: ___super_vptr
+
+___vtable_Main:
+  .long ___vtable_Object                         #     0: ___super_vptr
+  .long ___Main_main                             #     4: main
+
+___vtable_int:
+  .long 0xB00B5BAE                               #     0: ___super_vptr
+
+.section .text
+__rte_array_oob:
+  subl $12, %esp
+  movl $3, 0(%esp)
+  calll exit
+  addl $12, %esp
+
+__rte_null:
+  subl $12, %esp
+  movl $4, 0(%esp)
+  calll exit
+  addl $12, %esp
+
+__rte_array_size:
+  subl $12, %esp
+  movl $5, 0(%esp)
+  calll exit
+  addl $12, %esp
+
+__rte_divby0:
+  subl $12, %esp
+  movl $7, 0(%esp)
+  calll exit
+  addl $12, %esp
+
+# === MAIN SECTION
+.section .text
+.globl main
+main:
+  pushl  %ebp
+  movl %esp, %ebp
+  subl $12, %esp
+  # Bootstrap baby, bootstrap
+  subl $16, %esp
+  movl $8, %esi
+  subl $12, %esp
+  movl %esi, 4(%esp)
+  movl $1, 0(%esp)
+  call calloc
+  movl %eax, %edi
+  add $12, %esp
+   # ref to vtable setup, ref: $___vtable_Main
+  movl $___vtable_Main, 0(%edi)
+  # object meta data setup
+  movl $0, 4(%edi)
+  subl $12, %esp # 12 byte padding before call
+  movl %edi, 0(%esp)
+  calll ___Main_main
+  addl $12, %esp
+  addl $16, %esp
+  addl $12, %esp
+  popl %ebp
+  xor %eax, %eax
+  retl
+
+# class Main {...}
+  # void main(...) {...}
+  # === BEGIN Method Main#main
+  # callee stack layout for ___Main_main
+  #    8(%EBP): TARGET_OBJ      (  4 bytes) n/a
+  #    4(%EBP): RETURN_ADDR     (  4 bytes) n/a
+  #    0(%EBP): OLD_BP          (  4 bytes) n/a
+  #   -4(%EBP): PADDING16       ( 12 bytes) n/a
+___Main_main:
+  pushl  %ebp
+  movl %esp, %ebp
+  subl $12, %esp
+  movl $1337, %edi
+  subl $0, %esp
+  sub $12, %esp
+  movl %edi, 4(%esp)
+  movl $STR_D, 0(%esp)
+  call printf
+  add $12, %esp
+  addl $0, %esp
+  # method clean up
+  movl %ebp, %esp
+  popl %ebp
+  ret
+#+END_SRC
+
+* Specification
+Beancd is a reference implementation of the language specification
+JavaLi. JavaLi was specified for the course Compiler Design taught by
+Prof. Thomas Gross at ETH Zurich (2017).
+
+See the specification at
+https://web.archive.org/web/20200218171831/https://ethz.ch/content/dam/ethz/special-interest/infk/inst-cs/lst-dam/documents/Education/Classes/Spring2016/2810_Advanced_Compiler_Design/Homework/javali.pdf
+
+* Design Notes
+** Stack Layout
+#+BEGIN_SRC
+# +00: RETURN_VAL      
+# -04  METHOD_ARG      right most argument first
+# -08: METHOD_ARG
+# -12: TARGET_OBJ      reference to this object
+# -16: RETURN_ADDR     
+# -20: OLD_BP          
+# -24: LOCAL_VAR       for each local variable, one such entry exists
+# -28: PADDING16       padding for 16 byte alignment
+
+#+END_SRC
+- Padding entries ensure 16 byte alignment (required to be compatible
+  with IA-32 linux to call gcc functions)
+- The ~RETURN_VAL~  entry is only present if the function has a return
+  value.
+- ~LOCAL_VAR~ refers to local variables declared in the scope of a
+  method.
+
+
+After a method call ~%EBP~ is saved on the stack (referred as ~OLD_BP~).
+For the  function ~myFunction~ the stack layout is
+generated for caller (here ~Main#main~) and callee
+(~Main#myFunction~) as listed below.
+
+*** Source Language
+#+BEGIN_SRC java
+  class Main {
+    void main() {
+      int res;
+      res = myFunction(1, 2);
+
+      write(res);
+      writeln();
+    }
+
+    int myFunction(int arg1, int arg2) {
+      int local;
+      local = 1337;
+      return local + arg1 + arg2;
+    }
+  }
+#+END_SRC
+
+*** Caller Perspective
+#+BEGIN_SRC 
+# caller layout for call of myFunction
+-28(%EBP): RETURN_VAL      -
+-32(%EBP): METHOD_ARG      arg2
+-36(%EBP): METHOD_ARG      arg1
+-40(%EBP): TARGET_OBJ      -
+-44(%EBP): RETURN_ADDR     -
+-48(%EBP): OLD_BP          -
+-52(%EBP): LOCAL_VAR       local
+-56(%EBP): PADDING16       -
+
+#+END_SRC
+
+*** Callee Perspective
+#+BEGIN_SRC 
+# callee stack layout
++20(%EBP): RETURN_VAL      (4 bytes) -
++16(%EBP): METHOD_ARG      (4 bytes) arg2
++12(%EBP): METHOD_ARG      (4 bytes) arg1
++08(%EBP): TARGET_OBJ      (4 bytes) -
++04(%EBP): RETURN_ADDR     (4 bytes) -
++00(%EBP): OLD_BP          (4 bytes) -
+-04(%EBP): LOCAL_VAR       (4 bytes) local
+-08(%EBP): PADDING16       (8 bytes) -
+#+END_SRC
+
+** Memory Layout
+Beancd supports boolean, integer primitive data types, class
+data types, and array data types of primitive or class data types.
+
+- integer :: 4 bytes
+- boolean :: 4 bytes (simplifies implementation)
+- pointer :: 4 bytes
+- classes :: 8 byte header
+- arrays :: 16 byte header
+
+*** Classes
+Classes have a memory footprint of at least 8 bytes.
+
+**** Class Header
+#+BEGIN_SRC 
++00: pointer to vtable
++04: meta data
+#+END_SRC
+
+*** Arrays
+Arrays have a memory footprint of at least 16 bytes.
+
+**** Array Header
+#+BEGIN_SRC
++00: pointer to vtable
++04: meta data
++08: number of elements
++12: element size
+#+END_SRC
+
+** Virtual Tables
+Virtual tables are generated in the assembly prologue
+for each primitive and class data type. The first 4 bytes of a
+virtual table contains a reference to the super type. These references
+are used for inheritance. Primitive data types do not have a super
+type which is why the magic number ~0xB00B5BAE~ is used to indicate
+no super type. The class ~Object~ does not have a super type either and also
+uses the same magic number.
+
+
+All classes (including arrays) are sub-classes of the special class ~Object~. In the
+vtable dump below, class ~___vtable_Main~ contains a reference to
+the virtual table of special class ~Object~.
+
+#+BEGIN_SRC asm
+.data
+___vtable_boolean:
+  .long 0xB00B5BAE                               #     0: ___super_vptr       
+
+___vtable_Object:
+  .long 0xB00B5BAE                               #     0: ___super_vptr       
+
+___vtable_Main:
+  .long ___vtable_Object                         #     0: ___super_vptr       
+  .long ___Main_myFunction                       #     4: myFunction          
+  .long ___Main_main                             #     8: main                
+
+___vtable_int:
+  .long 0xB00B5BAE                               #     0: ___super_vptr
+
+#+END_SRC
+
+** Runtime Error Detection
+The assembly prologue also contains implementations of runtime errors.
+Runtime error labels are prefixed with ~__rte_~ (as in Run Time
+Error). Runtime errors abort execution with an error code and call 
+the glibc function ~_exit~.
+
+*** Runtime Assembly
+#+BEGIN_SRC asm
+    .text 
+__rte_array_oob:
+    subl  $12, %esp
+    movl  $3, 0(%esp)
+    calll _exit
+    addl  $12, %esp
+__rte_null:
+    subl  $12, %esp
+    movl  $4, 0(%esp)
+    calll _exit
+    addl  $12, %esp
+__rte_array_size:
+    subl  $12, %esp
+    movl  $5, 0(%esp)
+    calll _exit
+    addl  $12, %esp
+__rte_divby0:
+    subl  $12, %esp
+    movl  $7, 0(%esp)
+    calll _exit
+    addl  $12, %esp
+#+END_SRC
+
+*** Implemented Errors
+- Error 01 :: Invalid downcast
+- Error 02 :: Invalid array allocation
+- Error 03 :: Array out of bounds
+- Error 04 :: Null pointer
+- Error 05 :: Invalid array size on allocation
+- Error 12 :: Division or Modulo 0.
+
+
+* Optimizations
+** General Assembly Optimizations
+- For binary expressions, fewer assembly instructions are generated if
+  one or both of the two arguments can be determined at compile time.
+  Specifically, the fact that the instruction ~cmpl~ allows one argument to be an
+  immediate value is exploited.
+- A load of a constant value (Int/Boolean) is omitted and immediate
+  values are used instead where possible.
+- Nullchecks are not performed for ThisRef nodes.
+- Fewer instructions for branching between CfgCodeGenerator blocks.
+- If arguments for method calls can be determined at compile time,
+  immediate values are pushed onto stack directlly without moves into
+  registers.
+** ConstantFoldingOpt.java
+- Uses DataFlowAnalysis for constant propagination.
+** ArithmeticPropertyOpt.java
+- Exploits arithmetic properties in multiplications or modulo operations.
+  For instance, a multiplication by 0 is always zero. In case the
+  other argument is not a method call (with side effects), the
+  expression is evaluated to 0 at compile time.
+
+** BinaryOperationOpt.java
+- Exploits commutativity of multiplication and addition if constants
+  are involved.
+
+** StaticConditionOpt.java
+- Removes conditions and branching if condition value can be determined
+  at compile time.
+
+** VarOverwriteOpt.java
+- Removes assign statements of variables whose values are not used and
+  reassigned afterwards.
+
+** EmptyBlockCleanup.java
+- Removes empty/nop cfg graph nodes.
+
+** Further improvements (not enabled/ not implemented)
+*** InlineMethodAnalysis.java
+- Removes method invocation if method returns constant values and replaces 
+  invocation by those values. This optimization is currently not
+  enabled as it needs further testing and more advanced
+  implementations for stronger optimizations.
+
+*** Implement null check analysis
+- Remove unecessary null checks, not implemented
+
+*** Remove assignments in Loops whose value does not dependent on iteration
+- Not implemented
+
+
+* More Examples
+*** Source Language
+#+BEGIN_SRC java
+  class Main {
+    void main() {
+      int res;
+      res = myFunction(1, 2);
+      write(res);
+      writeln();
+    }
+    int myFunction(int arg1, int arg2) {
+      int local;
+      local = 1337;
+      return local + arg1 + arg2;
+    }
+  }
+#+END_SRC
+
+*** Assembly
+#+BEGIN_SRC asm
+#+END_SRC
