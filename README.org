@@ -1,3 +1,15 @@
+#+BEGIN_SRC 
+          _                              _ 
+         | |                            | |
+         | |__   ___  __ _ _ __   ___ __| |
+         | '_ \ / _ \/ _` | '_ \ / __/ _` |
+   THE   | |_) |  __/ (_| | | | | (_| (_| |  LANGUAGE
+         |_.__/ \___|\__,_|_| |_|\___\__,_|
+
+                 
+            ---- the beancd language ----
+#+END_SRC
+
 #+TITLE: The beancd programming language
 
 -beancd- (pronounced beancode) is a simple yet complete compiler for
@@ -16,6 +28,8 @@ pipeline including;
 - AST optimizations, simple CFG and Data-Flow analysis
 - IA-32 assembly backend
 
+Beancd is writtin in Java and compiles the beancd language to IA-32 assembly.
+
 * Language Features
 Some of beancds main language feature include;
 
@@ -23,12 +37,14 @@ Some of beancds main language feature include;
 - Single inheritance
 - Statically typed
 - static scoping: global, class, method scope
+- support for expressions and statements
 - no constructors, no abstract classes
 - supports primitive datatypes boolean, and int
 - Arrays are not co-variant, super of all Arrays is Object
 - built-in methods for read(), write(expr) and writeln()
 - runtime errors for: downcast, array store, out-of-bound, null
   pointer
+- syscalls are delegated to libc functions
 
 * tldr; Hello World aka print 1337
 input: beancd
@@ -151,14 +167,16 @@ JavaLi. JavaLi was specified for the course Compiler Design taught by
 Prof. Thomas Gross at ETH Zurich (2017).
 
 See the specification at
-https://web.archive.org/web/20200218171831/https://ethz.ch/content/dam/ethz/special-interest/infk/inst-cs/lst-dam/documents/Education/Classes/Spring2016/2810_Advanced_Compiler_Design/Homework/javali.pdf
-
+[[./res/javali.pdf]]
 * Design Notes
 ** Stack Layout
+Upon a function call a stack frame is allocated. Stack frames have
+the following layout; 
+
 #+BEGIN_SRC
 # +00: RETURN_VAL      
 # -04  METHOD_ARG      right most argument first
-# -08: METHOD_ARG
+# -08: METHOD_ARG      another argument
 # -12: TARGET_OBJ      reference to this object
 # -16: RETURN_ADDR     
 # -20: OLD_BP          
@@ -171,8 +189,7 @@ https://web.archive.org/web/20200218171831/https://ethz.ch/content/dam/ethz/spec
 - The ~RETURN_VAL~  entry is only present if the function has a return
   value.
 - ~LOCAL_VAR~ refers to local variables declared in the scope of a
-  method.
-
+  method. TODO
 
 After a method call ~%EBP~ is saved on the stack (referred as ~OLD_BP~).
 For the  function ~myFunction~ the stack layout is
@@ -326,7 +343,6 @@ __rte_divby0:
 - Error 05 :: Invalid array size on allocation
 - Error 12 :: Division or Modulo 0.
 
-
 * Optimizations
 ** General Assembly Optimizations
 - For binary expressions, fewer assembly instructions are generated if
@@ -375,8 +391,6 @@ __rte_divby0:
 
 *** Remove assignments in Loops whose value does not dependent on iteration
 - Not implemented
-
-
 * More Examples
 *** Source Language
 #+BEGIN_SRC java
