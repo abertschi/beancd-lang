@@ -166,11 +166,11 @@ Beancd is a reference implementation of the language specification
 JavaLi. JavaLi was specified for the course Compiler Design taught by
 Prof. Thomas Gross at ETH Zurich (2017).
 
-See the specification at
-[[./res/javali.pdf]]
+See the specification at TODO
+
 * Design Notes
 ** Stack Layout
-Upon a function call a stack frame is allocated. Stack frames have
+Upon a function call a stack frame is allocated. Stack frames headers have
 the following layout; 
 
 #+BEGIN_SRC
@@ -191,56 +191,8 @@ the following layout;
 - ~LOCAL_VAR~ refers to local variables declared in the scope of a
   method. TODO
 
-After a method call ~%EBP~ is saved on the stack (referred as ~OLD_BP~).
-For the  function ~myFunction~ the stack layout is
-generated for caller (here ~Main#main~) and callee
-(~Main#myFunction~) as listed below.
-
-*** Source Language
-#+BEGIN_SRC java
-  class Main {
-    void main() {
-      int res;
-      res = myFunction(1, 2);
-
-      write(res);
-      writeln();
-    }
-
-    int myFunction(int arg1, int arg2) {
-      int local;
-      local = 1337;
-      return local + arg1 + arg2;
-    }
-  }
-#+END_SRC
-
-*** Caller Perspective
-#+BEGIN_SRC 
-# caller layout for call of myFunction
--28(%EBP): RETURN_VAL      -
--32(%EBP): METHOD_ARG      arg2
--36(%EBP): METHOD_ARG      arg1
--40(%EBP): TARGET_OBJ      -
--44(%EBP): RETURN_ADDR     -
--48(%EBP): OLD_BP          -
--52(%EBP): LOCAL_VAR       local
--56(%EBP): PADDING16       -
-
-#+END_SRC
-
-*** Callee Perspective
-#+BEGIN_SRC 
-# callee stack layout
-+20(%EBP): RETURN_VAL      (4 bytes) -
-+16(%EBP): METHOD_ARG      (4 bytes) arg2
-+12(%EBP): METHOD_ARG      (4 bytes) arg1
-+08(%EBP): TARGET_OBJ      (4 bytes) -
-+04(%EBP): RETURN_ADDR     (4 bytes) -
-+00(%EBP): OLD_BP          (4 bytes) -
--04(%EBP): LOCAL_VAR       (4 bytes) local
--08(%EBP): PADDING16       (8 bytes) -
-#+END_SRC
+Upon a new stack frame ~%EBP~ is pushed on the stack (referred as
+~OLD_BP~). and ~%ESP~ is stored in ~%EBP~. 
 
 ** Memory Layout
 Beancd supports boolean, integer primitive data types, class
@@ -308,7 +260,7 @@ ___vtable_int:
 The assembly prologue also contains implementations of runtime errors.
 Runtime error labels are prefixed with ~__rte_~ (as in Run Time
 Error). Runtime errors abort execution with an error code and call 
-the glibc function ~_exit~.
+the glibc function ~exit~.
 
 *** Runtime Assembly
 #+BEGIN_SRC asm
