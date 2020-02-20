@@ -185,14 +185,14 @@ the following layout;
 
 #+END_SRC
 - Padding entries ensure 16 byte alignment (required to be compatible
-  with IA-32 linux to call gcc functions)
+  with IA-32 linux ABI to call gcc functions)
 - The ~RETURN_VAL~  entry is only present if the function has a return
   value.
-- ~LOCAL_VAR~ refers to local variables declared in the scope of a
-  method. TODO
+- ~LOCAL_VAR~ refers to local (stack) variables declared in the scope of a
+  method.
 
 Upon a new stack frame ~%EBP~ is pushed on the stack (referred as
-~OLD_BP~). and ~%ESP~ is stored in ~%EBP~. 
+~OLD_BP~) and ~%ESP~ is stored in ~%EBP~. 
 
 ** Memory Layout
 Beancd supports boolean, integer primitive data types, class
